@@ -47,7 +47,7 @@ Assistant:
         RunnableMap({
             "whisper": lambda _: whisper,
             "user_input": lambda _: user_input,
-            "history": lambda _: "\n".join(st.session_state.history[-6:]),
+            "history": lambda _: "\n".join(st.session_state.get("history", [])[-6:]),
         })
         | prompt
         | llm
