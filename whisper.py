@@ -8,7 +8,7 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 load_dotenv()
 st.set_page_config(page_title="Gemini Whisper Test", layout="wide")
 
-llm = ChatGoogleGenerativeAI(model="gemini-pro", temperature=0)
+llm = ChatGoogleGenerativeAI(model="gemini-2.0-flash", temperature=0)
 
 st.title("🧠 Gemini Bot with Whispered Guidance")
 
