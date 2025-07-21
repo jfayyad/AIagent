@@ -23,6 +23,8 @@ if "history" not in st.session_state:
     st.session_state.history = []
 if "sentiments" not in st.session_state:
     st.session_state.sentiments = []
+if "scores" not in st.session_state:
+    st.session_state.scores = []
 
 col1, col2 = st.columns(2)
 
@@ -40,14 +42,21 @@ def analyze_sentiment(text):
         result = sentiment_pipeline(text)[0]
         label = result["label"]
         score = result["score"]
-        if label == "POSITIVE":
-            return f"Positive ({score:.2f})"
-        elif label == "NEGATIVE":
-            return f"Negative ({score:.2f})"
-        else:
-            return f"Neutral ({score:.2f})"
-    except Exception as e:
-        return "Sentiment unavailable"
+        return label, score
+    except Exception:
+        return "NEUTRAL", 0.5
+
+def get_sentiment_display(label, score):
+    color = {
+        "POSITIVE": "#d4edda",  # green
+        "NEGATIVE": "#f8d7da",  # red
+        "NEUTRAL": "#fff3cd"    # yellow
+    }.get(label, "#f8f9fa")
+    return f"""
+        <div style="background-color:{color};border-radius:8px;padding:6px 12px;display:inline-block;">
+        <b>{label.capitalize()}</b> (score: {score:.2f})
+        </div>
+    """
 
 prompt = PromptTemplate.from_template("""
 You are a helpful, warm customer support assistant.
@@ -57,7 +66,7 @@ You MUST follow any supervisor advice given below exactly and prioritize it in y
 Context:
 - Past memory: User has had password trouble on mobile before.
 - Supervisor advice (optional): {whisper}
-- User sentiment: {sentiment}
+- User sentiment: {sentiment_label} (score: {sentiment_score:.2f})
 
 Recent conversation:
 {history}
@@ -67,15 +76,17 @@ Assistant:
 """)
 
 if send_button and user_input.strip():
-    sentiment = analyze_sentiment(user_input)
-    st.session_state.sentiments.append(sentiment)
+    label, score = analyze_sentiment(user_input)
+    st.session_state.sentiments.append(label)
+    st.session_state.scores.append(score)
 
     pipeline_map = (
         RunnableMap({
             "whisper": lambda _: whisper,
             "user_input": lambda _: user_input,
             "history": lambda _: "\n".join(st.session_state.get("history", [])[-6:]),
-            "sentiment": lambda _: sentiment,
+            "sentiment_label": lambda _: label,
+            "sentiment_score": lambda _: score,
         })
         | prompt
         | llm
@@ -85,10 +96,15 @@ if send_button and user_input.strip():
     st.session_state.history.append(f"user: {user_input}")
     st.session_state.history.append(f"assistant: {response.content}")
 
+# Display chat history with sentiment, and show warning for strong negative sentiment
 for i, msg in enumerate(st.session_state.history):
     role, content = msg.split(": ", 1)
     with st.chat_message(role):
         st.markdown(content)
         if role == "user":
-            sentiment = st.session_state.sentiments[i // 2]
-            st.caption(f"Sentiment: {sentiment}")
+            label = st.session_state.sentiments[i // 2]
+            score = st.session_state.scores[i // 2]
+            st.markdown(get_sentiment_display(label, score), unsafe_allow_html=True)
+            # Show red warning if strongly negative
+            if label == "NEGATIVE" and score > 0.7:
+                st.error("Strong negative sentiment detected. Advisor intervention is recommended.")
