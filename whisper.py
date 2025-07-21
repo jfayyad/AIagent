@@ -33,11 +33,11 @@ def analyze_sentiment(text):
     blob = TextBlob(text)
     polarity = blob.sentiment.polarity
     if polarity > 0.2:
-        return "😊 Positive"
+        return "Positive"
     elif polarity < -0.2:
-        return "😟 Negative"
+        return "Negative"
     else:
-        return "😐 Neutral"
+        return "Neutral"
 
 prompt = PromptTemplate.from_template("""
 You are a helpful, warm customer support assistant.
