@@ -80,13 +80,19 @@ if send_button and user_input.strip():
     st.session_state.sentiments.append(label)
     st.session_state.scores.append(score)
 
+    def get_whisper(_): return whisper
+    def get_user_input(_): return user_input
+    def get_history(_): return "\n".join(st.session_state.get("history", [])[-6:])
+    def get_sentiment_label(_): return label
+    def get_sentiment_score(_): return score
+
     pipeline_map = (
         RunnableMap({
-            "whisper": lambda _: whisper,
-            "user_input": lambda _: user_input,
-            "history": lambda _: "\n".join(st.session_state.get("history", [])[-6:]),
-            "sentiment_label": lambda _: label,
-            "sentiment_score": lambda _: score,
+            "whisper": get_whisper,
+            "user_input": get_user_input,
+            "history": get_history,
+            "sentiment_label": get_sentiment_label,
+            "sentiment_score": get_sentiment_score,
         })
         | prompt
         | llm
