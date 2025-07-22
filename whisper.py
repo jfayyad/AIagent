@@ -15,7 +15,7 @@ llm = ChatGoogleGenerativeAI(model="gemini-2.0-flash", temperature=0)
 
 @st.cache_resource(show_spinner=False)
 def get_graphiti():
-    return Graphiti("gemini-whisper-bot", storage_path="graphiti_memory.jsonl")
+    return Graphiti("gemini-whisper-bot")
 graphiti = get_graphiti()
 
 @st.cache_resource(show_spinner=False)
