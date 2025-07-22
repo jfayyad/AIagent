@@ -5,19 +5,25 @@ from langchain_core.prompts import PromptTemplate
 from langchain_core.runnables import RunnableMap
 from langchain_google_genai import ChatGoogleGenerativeAI
 from transformers import pipeline
+from datetime import datetime
+from graphiti_core import Graphiti
 
 load_dotenv()
 st.set_page_config(page_title="Gemini Whisper Bot", layout="wide")
 
 llm = ChatGoogleGenerativeAI(model="gemini-2.0-flash", temperature=0)
 
-st.title("Gemini Bot with Whispered Guidance")
+@st.cache_resource(show_spinner=False)
+def get_graphiti():
+    return Graphiti("gemini-whisper-bot")
+graphiti = get_graphiti()
 
 @st.cache_resource(show_spinner=False)
 def get_sentiment_pipeline():
     return pipeline("sentiment-analysis")
-
 sentiment_pipeline = get_sentiment_pipeline()
+
+st.title("Gemini Bot with Whispered Guidance")
 
 if "history" not in st.session_state:
     st.session_state.history = []
@@ -48,15 +54,27 @@ def analyze_sentiment(text):
 
 def get_sentiment_display(label, score):
     color = {
-        "POSITIVE": "#d4edda",  # green
-        "NEGATIVE": "#f8d7da",  # red
-        "NEUTRAL": "#fff3cd"    # yellow
+        "POSITIVE": "#d4edda", 
+        "NEGATIVE": "#f8d7da",  
+        "NEUTRAL": "#fff3cd"    
     }.get(label, "#f8f9fa")
     return f"""
         <div style="background-color:{color};border-radius:8px;padding:6px 12px;display:inline-block;">
         <b>{label.capitalize()}</b> (score: {score:.2f})
         </div>
     """
+
+def store_message(role, content):
+    graphiti.save({
+        "role": role,
+        "content": content,
+        "timestamp": datetime.now().isoformat()
+    })
+
+def retrieve_recent_history(n=6):
+    results = graphiti.search("*", top_k=n, order_by="desc")
+    messages = [f"{r['role']}: {r['content']}" for r in reversed(results)]  # oldest first
+    return "\n".join(messages)
 
 prompt = PromptTemplate.from_template("""
 You are a helpful, warm customer support assistant.
@@ -80,9 +98,13 @@ if send_button and user_input.strip():
     st.session_state.sentiments.append(label)
     st.session_state.scores.append(score)
 
+    store_message("user", user_input)
+
+    full_history = retrieve_recent_history(n=6)
+
     def get_whisper(_): return whisper
     def get_user_input(_): return user_input
-    def get_history(_): return "\n".join(st.session_state.get("history", [])[-6:])
+    def get_history(_): return full_history
     def get_sentiment_label(_): return label
     def get_sentiment_score(_): return score
 
@@ -99,10 +121,13 @@ if send_button and user_input.strip():
     )
 
     response = pipeline_map.invoke({})
+
+    store_message("assistant", response.content)
+
     st.session_state.history.append(f"user: {user_input}")
     st.session_state.history.append(f"assistant: {response.content}")
 
-# Display chat history with sentiment, and show warning for strong negative sentiment
+
 for i, msg in enumerate(st.session_state.history):
     role, content = msg.split(": ", 1)
     with st.chat_message(role):
@@ -111,6 +136,5 @@ for i, msg in enumerate(st.session_state.history):
             label = st.session_state.sentiments[i // 2]
             score = st.session_state.scores[i // 2]
             st.markdown(get_sentiment_display(label, score), unsafe_allow_html=True)
-            # Show red warning if strongly negative
             if label == "NEGATIVE" and score > 0.7:
                 st.error("Strong negative sentiment detected. Advisor intervention is recommended.")
