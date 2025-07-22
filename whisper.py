@@ -18,6 +18,16 @@ def get_graphiti():
     return Graphiti("gemini-whisper-bot")
 graphiti = get_graphiti()
 
+# ---- SEED MEMORY ONCE ----
+if "memory_seeded" not in st.session_state:
+    graphiti.save({
+        "role": "assistant",
+        "content": "I remember you were looking for a badminton shoes.",
+        "timestamp": datetime.now().isoformat()
+    })
+    st.session_state.memory_seeded = True
+# ---- END SEED ----
+
 @st.cache_resource(show_spinner=False)
 def get_sentiment_pipeline():
     return pipeline("sentiment-analysis")
@@ -54,9 +64,9 @@ def analyze_sentiment(text):
 
 def get_sentiment_display(label, score):
     color = {
-        "POSITIVE": "#d4edda", 
-        "NEGATIVE": "#f8d7da",  
-        "NEUTRAL": "#fff3cd"    
+        "POSITIVE": "#d4edda",
+        "NEGATIVE": "#f8d7da",
+        "NEUTRAL": "#fff3cd"
     }.get(label, "#f8f9fa")
     return f"""
         <div style="background-color:{color};border-radius:8px;padding:6px 12px;display:inline-block;">
@@ -126,7 +136,6 @@ if send_button and user_input.strip():
 
     st.session_state.history.append(f"user: {user_input}")
     st.session_state.history.append(f"assistant: {response.content}")
-
 
 for i, msg in enumerate(st.session_state.history):
     role, content = msg.split(": ", 1)
