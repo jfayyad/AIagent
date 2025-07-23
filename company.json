@@ -1,0 +1,42 @@
+{
+  "company_name": "Little Sleepies",
+  "overview": "Little Sleepies is an American company specializing in premium children’s sleepwear, loungewear, and accessories. Founded in 2018 by Maradith Frenkel, the company is known for its comfortable, high-quality pajamas made from bamboo viscose.",
+  "core_products": [
+    "Zippies (one-piece pajamas)",
+    "Two-piece sets",
+    "Adult pajamas",
+    "Daywear separates",
+    "Blankets",
+    "Headbands",
+    "Loveys",
+    "Hats"
+  ],
+  "key_features": [
+    "Signature bamboo viscose material",
+    "Seasonless lightweight design",
+    "Inclusive sizing from premie/newborn to adult",
+    "Family matching options",
+    "Fun themed prints"
+  ],
+  "sustainability": [
+    "Eco-friendly bamboo viscose",
+    "Ethical overseas manufacturing"
+  ],
+  "customer_experience": [
+    "Direct-to-consumer via littlesleepies.com",
+    "30-day return policy for unworn, unwashed items with tags",
+    "Engaged social media community",
+    "Limited-edition restock model"
+  ],
+  "faqs": [
+    "Designed in the USA, manufactured in ethical overseas facilities.",
+    "Pajamas are not flame-resistant but are tight-fitting to comply with safety standards.",
+    "Returns: 30-day policy for unworn, unwashed items with tags."
+  ],
+  "contact": {
+    "website": "littlesleepies.com",
+    "email": "hello@littlesleepies.com",
+    "social": ["Instagram", "Facebook", "TikTok"]
+  },
+  "mission": "To create comfortable and practical sleepwear and loungewear loved by families, with a commitment to inclusivity, sustainability, and delight through fun designs."
+}
