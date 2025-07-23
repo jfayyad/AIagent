@@ -9,16 +9,25 @@ from datetime import datetime
 from graphiti_core import Graphiti
 
 load_dotenv()
+neo4j_url = os.getenv("NEO4J_URL")
+neo4j_user = os.getenv("NEO4J_USER")
+neo4j_password = os.getenv("NEO4J_PASSWORD")
+
 st.set_page_config(page_title="Gemini Whisper Bot", layout="wide")
 
 llm = ChatGoogleGenerativeAI(model="gemini-2.0-flash", temperature=0)
 
 @st.cache_resource(show_spinner=False)
 def get_graphiti():
-    return Graphiti("gemini-whisper-bot")
+    return Graphiti(
+        "gemini-whisper-bot",
+        backend="neo4j",
+        neo4j_url=neo4j_url,
+        neo4j_user=neo4j_user,
+        neo4j_password=neo4j_password
+    )
 graphiti = get_graphiti()
 
-# ---- SEED MEMORY ONCE ----
 if "memory_seeded" not in st.session_state:
     graphiti.save({
         "role": "assistant",
@@ -26,7 +35,7 @@ if "memory_seeded" not in st.session_state:
         "timestamp": datetime.now().isoformat()
     })
     st.session_state.memory_seeded = True
-# ---- END SEED ----
+
 
 @st.cache_resource(show_spinner=False)
 def get_sentiment_pipeline():
