@@ -7,3 +7,4 @@ google-generativeai
 torch 
 transformers
 graphiti_core
+neo4j
