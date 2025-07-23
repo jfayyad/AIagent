@@ -6,36 +6,52 @@ from langchain_core.runnables import RunnableMap
 from langchain_google_genai import ChatGoogleGenerativeAI
 from transformers import pipeline
 from datetime import datetime
+
 from graphiti_core import Graphiti
+from graphiti_core.llm_client import LLMConfig
+from graphiti_core.llm_client.gemini_client import GeminiClient
+from graphiti_core.embedder.gemini import GeminiEmbedder, GeminiEmbedderConfig
 
+# Load env variables
 load_dotenv()
-neo4j_url = os.getenv("NEO4J_URL")
-neo4j_user = os.getenv("NEO4J_USER")
-neo4j_password = os.getenv("NEO4J_PASSWORD")
-
 st.set_page_config(page_title="Gemini Whisper Bot", layout="wide")
 
-llm = ChatGoogleGenerativeAI(model="gemini-2.0-flash", temperature=0)
+def get_env_var(key):
+    if hasattr(st, "secrets") and key in st.secrets:
+        return st.secrets[key]
+    return os.getenv(key)
+
+neo4j_url = get_env_var("NEO4J_URL")
+neo4j_user = get_env_var("NEO4J_USER")
+neo4j_password = get_env_var("NEO4J_PASSWORD")
+GOOGLE_API_KEY = get_env_var("GOOGLE_API_KEY")
 
 @st.cache_resource(show_spinner=False)
 def get_graphiti():
-    return Graphiti(
-        "gemini-whisper-bot",
-        backend="neo4j",
-        neo4j_url=neo4j_url,
-        neo4j_user=neo4j_user,
-        neo4j_password=neo4j_password
+    if not all([neo4j_url, neo4j_user, neo4j_password, GOOGLE_API_KEY]):
+        raise ValueError("One or more credentials are missing or empty!")
+    llm_client = GeminiClient(
+        config=LLMConfig(
+            api_key=GOOGLE_API_KEY,
+            model="gemini-2.0-flash"
+        )
     )
+    embedder = GeminiEmbedder(
+        config=GeminiEmbedderConfig(
+            api_key=GOOGLE_API_KEY,
+            embedding_model="embedding-001"
+        )
+    )
+    return Graphiti(
+        neo4j_url,
+        neo4j_user,
+        neo4j_password,
+        llm_client=llm_client,
+        embedder=embedder,
+        cross_encoder=None,
+    )
+
 graphiti = get_graphiti()
-
-if "memory_seeded" not in st.session_state:
-    graphiti.save({
-        "role": "assistant",
-        "content": "I remember you were looking for a badminton shoes.",
-        "timestamp": datetime.now().isoformat()
-    })
-    st.session_state.memory_seeded = True
-
 
 @st.cache_resource(show_spinner=False)
 def get_sentiment_pipeline():
@@ -84,16 +100,27 @@ def get_sentiment_display(label, score):
     """
 
 def store_message(role, content):
-    graphiti.save({
-        "role": role,
-        "content": content,
-        "timestamp": datetime.now().isoformat()
-    })
+    # You can set group_id to a user/session ID if you want, or leave as "default"
+    graphiti.add_episode(
+        name="Chatbot Message",
+        episode_body=f"{role}: {content}",
+        source="message",
+        source_description="Chatbot",
+        reference_time=datetime.now(),
+        group_id="default"
+    )
 
 def retrieve_recent_history(n=6):
-    results = graphiti.search("*", top_k=n, order_by="desc")
-    messages = [f"{r['role']}: {r['content']}" for r in reversed(results)]  # oldest first
+    # Returns latest episodes for this group
+    episodes = graphiti.retrieve_episodes(datetime.now(), last_n=n, group_ids=["default"])
+    messages = []
+    for ep in reversed(episodes):  # Oldest first
+        for line in ep.content.split("\n"):
+            if ": " in line:
+                messages.append(line)
     return "\n".join(messages)
+
+llm = ChatGoogleGenerativeAI(model="gemini-2.0-flash", temperature=0)
 
 prompt = PromptTemplate.from_template("""
 You are a helpful, warm customer support assistant.
@@ -118,7 +145,6 @@ if send_button and user_input.strip():
     st.session_state.scores.append(score)
 
     store_message("user", user_input)
-
     full_history = retrieve_recent_history(n=6)
 
     def get_whisper(_): return whisper
@@ -142,7 +168,6 @@ if send_button and user_input.strip():
     response = pipeline_map.invoke({})
 
     store_message("assistant", response.content)
-
     st.session_state.history.append(f"user: {user_input}")
     st.session_state.history.append(f"assistant: {response.content}")
 
@@ -156,3 +181,4 @@ for i, msg in enumerate(st.session_state.history):
             st.markdown(get_sentiment_display(label, score), unsafe_allow_html=True)
             if label == "NEGATIVE" and score > 0.7:
                 st.error("Strong negative sentiment detected. Advisor intervention is recommended.")
+
