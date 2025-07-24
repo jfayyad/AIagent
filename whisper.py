@@ -7,10 +7,20 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 from transformers import pipeline
 import json
 
-# Load environment variables
-load_dotenv()
+# ---- Always initialize session state ----
+for var, val in [
+    ("history", []),
+    ("sentiments", []),
+    ("scores", []),
+    ("awaiting_supervisor", False),
+    ("pending_user_input", ""),
+    ("supervisor_input", ""),
+]:
+    if var not in st.session_state:
+        st.session_state[var] = val
 
-# --- Knowledge base loader ---
+# ---- Load company KB ----
+load_dotenv()
 def load_knowledge_base(filepath="company.json"):
     with open(filepath, "r") as f:
         kb = json.load(f)
@@ -27,30 +37,22 @@ FAQs: {" ".join(kb["faqs"])}
 Contact: Website: {kb["contact"]["website"]}, Email: {kb["contact"]["email"]}, Social: {", ".join(kb["contact"]["social"])}
 """
     return kb_prompt
-
-# Load knowledge base at app startup
 kb_prompt = load_knowledge_base()
 
-# --- LLM setup ---
+# ---- LLM setup ----
 llm = ChatGoogleGenerativeAI(model="gemini-2.0-flash", temperature=0)
 
-st.set_page_config(page_title="Gemini Whisper Bot", layout="wide")
-st.title("Gemini Bot with Guidance")
-
-# --- Improved Sentiment Analysis ---
+# ---- Sentiment ----
 @st.cache_resource(show_spinner=False)
 def get_sentiment_pipeline():
     model_name = "cardiffnlp/twitter-roberta-base-sentiment-latest"
     return pipeline("sentiment-analysis", model=model_name, tokenizer=model_name)
-
 sentiment_pipeline = get_sentiment_pipeline()
-
 def analyze_sentiment(text):
     try:
         result = sentiment_pipeline(text)[0]
-        label = result["label"].upper()  # 'POSITIVE', 'NEGATIVE', 'NEUTRAL'
+        label = result["label"].upper()
         score = result["score"]
-        # If the message is a question and classified as negative, check for negative words
         negative_words = ["bad", "worst", "angry", "problem", "issue", "disappointed", "upset", "frustrated"]
         is_question = "?" in text
         contains_neg = any(word in text.lower() for word in negative_words)
@@ -60,7 +62,6 @@ def analyze_sentiment(text):
         return label, score
     except Exception:
         return "NEUTRAL", 0.5
-
 def get_sentiment_display(label, score):
     color = {
         "POSITIVE": "#d4edda",
@@ -73,26 +74,46 @@ def get_sentiment_display(label, score):
         </div>
     """
 
-if "history" not in st.session_state:
-    st.session_state.history = []
-if "sentiments" not in st.session_state:
-    st.session_state.sentiments = []
-if "scores" not in st.session_state:
-    st.session_state.scores = []
+# ---- Certainty classifier ----
+certainty_prompt = PromptTemplate.from_template("""
+You are an expert at classifying customer support bot answers.
+
+Instruction:
+Given the following answer from a bot, decide if it is confident and provides helpful information ("CONFIDENT"),
+or if it is uncertain, evasive, or cannot provide a real answer ("UNCERTAIN").
+Reply with only one word: CONFIDENT or UNCERTAIN.
+
+Bot answer:
+"{bot_reply}"
+""")
+def classify_certainty(reply_text):
+    cert_map = RunnableMap({"bot_reply": lambda _: reply_text})
+    certainty_chain = cert_map | certainty_prompt | llm
+    certainty_result = certainty_chain.invoke({})
+    return certainty_result.content.strip().upper()
+
+# ---- UI ----
+st.set_page_config(page_title="Gemini Whisper Bot", layout="wide")
+st.title("Gemini Bot: Supervisor Guidance and Whisper")
 
 col1, col2 = st.columns(2)
 
 with col1:
     st.subheader("User")
     user_input = st.text_input("Type your message:", key="user_input")
-    send_button = st.button("Send")
+    send_button = st.button("Send", key="user_send")
 
 with col2:
     st.subheader("Advisor")
-    whisper = st.text_input("Whisper to the bot:", key="whisper_input")
+    supervisor_input = st.text_input(
+        "Whisper (normal) or Supervisor Advice (if needed):",
+        key="supervisor_input",
+        value=st.session_state.supervisor_input
+    )
+    supervisor_send = st.button("Send Supervisor Advice", key="supervisor_send")
 
-# --- Prompt ---
-prompt = PromptTemplate.from_template(f"""
+# ---- Main prompt ----
+main_prompt = PromptTemplate.from_template(f"""
 {kb_prompt}
 
 You MUST follow any supervisor advice given below exactly and prioritize it in your reply.
@@ -108,12 +129,15 @@ User: {{user_input}}
 Assistant:
 """)
 
+# ---- User sends a message ----
 if send_button and user_input.strip():
     label, score = analyze_sentiment(user_input)
     st.session_state.sentiments.append(label)
     st.session_state.scores.append(score)
 
-    def get_whisper(_): return whisper
+    # Advisor whisper (applies only to this turn)
+    whisper_to_pass = supervisor_input if supervisor_input else ""
+    def get_whisper(_): return whisper_to_pass
     def get_user_input(_): return user_input
     def get_history(_): return "\n".join(st.session_state.get("history", [])[-6:])
     def get_sentiment_label(_): return label
@@ -127,21 +151,81 @@ if send_button and user_input.strip():
             "sentiment_label": get_sentiment_label,
             "sentiment_score": get_sentiment_score,
         })
-        | prompt
+        | main_prompt
         | llm
     )
 
     response = pipeline_map.invoke({})
-    st.session_state.history.append(f"user: {user_input}")
-    st.session_state.history.append(f"assistant: {response.content}")
+    response_text = response.content.strip()
 
-for i, msg in enumerate(st.session_state.history):
+    certainty = classify_certainty(response_text)
+    st.session_state.history.append(f"user: {user_input}")
+
+    if certainty == "UNCERTAIN":
+        st.session_state.history.append(
+            "assistant: Hold on, let me check with a supervisor before answering your question."
+        )
+        st.session_state.history.append(
+            "supervisor_flag: Supervisor attention required for this user question."
+        )
+        st.session_state.awaiting_supervisor = True
+        st.session_state.pending_user_input = user_input
+    else:
+        st.session_state.history.append(f"assistant: {response_text}")
+        st.session_state.awaiting_supervisor = False
+        st.session_state.pending_user_input = ""
+
+    # Clear whisper after one use
+    # st.session_state.supervisor_input = ""
+
+# ---- Supervisor sends advice in escalation mode ----
+if st.session_state.awaiting_supervisor and supervisor_send and supervisor_input.strip():
+    pending_input = st.session_state.get("pending_user_input", "")
+    if not pending_input:
+        st.warning("No pending user input available for supervisor escalation. Please wait for the user's question.")
+    else:
+        label, score = analyze_sentiment(pending_input)
+        def get_whisper(_): return supervisor_input
+        def get_user_input(_): return pending_input
+        def get_history(_): return "\n".join(st.session_state.get("history", [])[-6:])
+        def get_sentiment_label(_): return label
+        def get_sentiment_score(_): return score
+
+        pipeline_map = (
+            RunnableMap({
+                "whisper": get_whisper,
+                "user_input": get_user_input,
+                "history": get_history,
+                "sentiment_label": get_sentiment_label,
+                "sentiment_score": get_sentiment_score,
+            })
+            | main_prompt
+            | llm
+        )
+        response = pipeline_map.invoke({})
+        response_text = response.content.strip()
+        st.session_state.history.append(f"assistant: {response_text}")
+        st.session_state.awaiting_supervisor = False
+        st.session_state.pending_user_input = ""
+        # Clear supervisor input
+        # st.session_state.supervisor_input = ""
+
+# ---- Display chat ----
+user_count = 0  # Counts number of user messages
+
+for msg in st.session_state.history:
+    if msg.startswith("supervisor_flag:"):
+        with st.chat_message("assistant"):
+            st.error("🔴 Supervisor attention required for this question.")
+        continue
     role, content = msg.split(": ", 1)
     with st.chat_message(role):
         st.markdown(content)
         if role == "user":
-            label = st.session_state.sentiments[i // 2]
-            score = st.session_state.scores[i // 2]
-            st.markdown(get_sentiment_display(label, score), unsafe_allow_html=True)
-            if label == "NEGATIVE" and score > 0.7:
-                st.error("Strong negative sentiment detected. Advisor intervention is recommended.")
+            if user_count < len(st.session_state.sentiments):
+                label = st.session_state.sentiments[user_count]
+                score = st.session_state.scores[user_count]
+                st.markdown(get_sentiment_display(label, score), unsafe_allow_html=True)
+                if label == "NEGATIVE" and score > 0.7:
+                    st.error("Strong negative sentiment detected. Advisor intervention is recommended.")
+            user_count += 1
