@@ -15,6 +15,8 @@ for var, val in [
     ("awaiting_supervisor", False),
     ("pending_user_input", ""),
     ("supervisor_input", ""),
+    ("clear_user_input", False),
+    ("clear_supervisor_input", False),
 ]:
     if var not in st.session_state:
         st.session_state[var] = val
@@ -98,6 +100,15 @@ st.title("Gemini Bot: Supervisor Guidance and Whisper")
 
 col1, col2 = st.columns(2)
 
+# --- Clear input fields BEFORE rendering widgets if flags are set ---
+if st.session_state.clear_user_input:
+    st.session_state["user_input"] = ""
+    st.session_state.clear_user_input = False
+
+if st.session_state.clear_supervisor_input:
+    st.session_state["supervisor_input"] = ""
+    st.session_state.clear_supervisor_input = False
+
 with col1:
     st.subheader("User")
     user_input = st.text_input("Type your message:", key="user_input")
@@ -116,18 +127,21 @@ with col2:
 main_prompt = PromptTemplate.from_template(f"""
 {kb_prompt}
 
-You MUST follow any supervisor advice given below exactly and prioritize it in your reply.
+You are NOT a chatbot or virtual assistant; you represent Little Sleepies and must always answer as a company staff member, not as an AI. You are knowledgeable about all store policies, products, and details in the knowledge base.
+
+IMPORTANT: The supervisor advice provided below is FACTUALLY CORRECT and MUST be included in your reply. If it is a short phrase, expand it naturally into a helpful sentence for the customer. Do NOT ignore, contradict, or hedge about the supervisor advice.
+
+Supervisor advice: {{whisper}}
 
 Context:
-- Supervisor advice (optional): {{whisper}}
 - User sentiment: {{sentiment_label}} (score: {{sentiment_score:.2f}})
-
-Recent conversation:
+- Recent conversation: 
 {{history}}
 
 User: {{user_input}}
 Assistant:
 """)
+
 
 # ---- User sends a message ----
 if send_button and user_input.strip():
@@ -175,8 +189,10 @@ if send_button and user_input.strip():
         st.session_state.awaiting_supervisor = False
         st.session_state.pending_user_input = ""
 
-    # Clear whisper after one use
-    # st.session_state.supervisor_input = ""
+    # Clear both fields after one use
+    st.session_state.clear_user_input = True
+    st.session_state.clear_supervisor_input = True
+    st.rerun()
 
 # ---- Supervisor sends advice in escalation mode ----
 if st.session_state.awaiting_supervisor and supervisor_send and supervisor_input.strip():
@@ -207,13 +223,13 @@ if st.session_state.awaiting_supervisor and supervisor_send and supervisor_input
         st.session_state.history.append(f"assistant: {response_text}")
         st.session_state.awaiting_supervisor = False
         st.session_state.pending_user_input = ""
-        # Clear supervisor input
-        # st.session_state.supervisor_input = ""
+        # Clear supervisor input after one use
+        st.session_state.clear_supervisor_input = True
+        st.rerun()
 
-# ---- Display chat ----
-user_count = 0  # Counts number of user messages
-
-for msg in st.session_state.history:
+# ---- Display chat (newest at top!) ----
+user_count = len(st.session_state.sentiments) - 1
+for msg in reversed(st.session_state.history):
     if msg.startswith("supervisor_flag:"):
         with st.chat_message("assistant"):
             st.error("🔴 Supervisor attention required for this question.")
@@ -222,10 +238,10 @@ for msg in st.session_state.history:
     with st.chat_message(role):
         st.markdown(content)
         if role == "user":
-            if user_count < len(st.session_state.sentiments):
+            if user_count >= 0:
                 label = st.session_state.sentiments[user_count]
                 score = st.session_state.scores[user_count]
                 st.markdown(get_sentiment_display(label, score), unsafe_allow_html=True)
                 if label == "NEGATIVE" and score > 0.7:
                     st.error("Strong negative sentiment detected. Advisor intervention is recommended.")
-            user_count += 1
+            user_count -= 1
