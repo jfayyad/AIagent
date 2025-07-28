@@ -1,3 +1,4 @@
 agents
 .env
 company.json
+llm_debug.log
