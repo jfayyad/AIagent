@@ -6,7 +6,14 @@ from langchain_core.runnables import RunnableMap
 from langchain_google_genai import ChatGoogleGenerativeAI
 from transformers import pipeline
 import json
+import logging
 
+logging.basicConfig(
+    level=logging.INFO,
+    filename="llm_debug.log",
+    filemode="a",
+    format="%(asctime)s %(levelname)s: %(message)s"
+)
 # ---- Always initialize session state ----
 for var, val in [
     ("history", []),
@@ -92,7 +99,10 @@ def classify_certainty(reply_text):
     cert_map = RunnableMap({"bot_reply": lambda _: reply_text})
     certainty_chain = cert_map | certainty_prompt | llm
     certainty_result = certainty_chain.invoke({})
-    return certainty_result.content.strip().upper()
+    certainty = certainty_result.content.strip().upper()
+    logging.info(f"Uncertainty LLM input: {reply_text}")
+    logging.info(f"Uncertainty LLM output: {certainty}")
+    return certainty
 
 # ---- UI ----
 st.set_page_config(page_title="Gemini Whisper Bot", layout="wide")
