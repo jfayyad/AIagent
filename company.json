@@ -1,0 +1,50 @@
+
+{
+  "company_name": "Little Sleepies",
+  "overview": "Little Sleepies is an American company specializing in premium children’s sleepwear, loungewear, and accessories.",
+  "core_products": [
+    "Zippies (one-piece pajamas)",
+    "two-piece sets",
+    "adult pajamas",
+    "Daywear separates",
+    "relaxed basics",
+    "blankets",
+    "headbands",
+    "loveys",
+    "hats"
+  ],
+  "key_features": [
+    "custom-milled bamboo viscose fabric",
+    "ultra-soft",
+    "breathable",
+    "suitable for sensitive skin",
+    "lightweight fabric",
+    "inclusive sizing",
+    "fun prints"
+  ],
+  "sustainability": [
+    "bamboo viscose is sustainable and biodegradable",
+    "ethical manufacturing"
+  ],
+  "customer_experience": [
+    "direct-to-consumer via website",
+    "active social media",
+    "dedicated fan groups",
+    "restock model"
+  ],
+  "mission": "To create comfortable and practical sleepwear and loungewear loved by families, with a commitment to inclusivity, sustainability, and delight through fun designs.",
+  "faqs": [
+    "Products designed in USA, manufactured overseas in ethical facilities.",
+    "Pajamas are not flame resistant but use tight-fitting styles to meet safety.",
+    "30-day return policy for unworn, unwashed items with tags."
+  ],
+  "contact": {
+    "website": "littlesleepies.com",
+    "email": "hello@littlesleepies.com",
+    "social": [
+      "Instagram",
+      "Facebook",
+      "TikTok"
+    ]
+  }
+}
