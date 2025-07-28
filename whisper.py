@@ -106,7 +106,7 @@ def classify_certainty(reply_text):
 
 # ---- UI ----
 st.set_page_config(page_title="Little Sleepies Bot", layout="wide")
-st.title("Little Sleepies")
+st.title("Gemini Bot: Supervisor Guidance and Whisper")
 
 col1, col2 = st.columns(2)
 
@@ -145,7 +145,8 @@ Supervisor advice: {{whisper}}
 
 Context:
 - User sentiment: {{sentiment_label}} (score: {{sentiment_score:.2f}})
-- Recent conversation: {{history}}
+- Recent conversation: 
+{{history}}
 
 User: {{user_input}}
 Assistant:
