@@ -14,7 +14,7 @@ logging.basicConfig(
     filemode="a",
     format="%(asctime)s %(levelname)s: %(message)s"
 )
-# ---- Always initialize session state ----
+
 for var, val in [
     ("history", []),
     ("sentiments", []),
@@ -28,7 +28,6 @@ for var, val in [
     if var not in st.session_state:
         st.session_state[var] = val
 
-# ---- Load company KB ----
 load_dotenv()
 def load_knowledge_base(filepath="company.json"):
     with open(filepath, "r") as f:
@@ -48,15 +47,14 @@ Contact: Website: {kb["contact"]["website"]}, Email: {kb["contact"]["email"]}, S
     return kb_prompt
 kb_prompt = load_knowledge_base()
 
-# ---- LLM setup ----
 llm = ChatGoogleGenerativeAI(model="gemini-2.0-flash", temperature=0)
 
-# ---- Sentiment ----
 @st.cache_resource(show_spinner=False)
 def get_sentiment_pipeline():
     model_name = "cardiffnlp/twitter-roberta-base-sentiment-latest"
     return pipeline("sentiment-analysis", model=model_name, tokenizer=model_name)
 sentiment_pipeline = get_sentiment_pipeline()
+
 def analyze_sentiment(text):
     try:
         result = sentiment_pipeline(text)[0]
@@ -71,6 +69,7 @@ def analyze_sentiment(text):
         return label, score
     except Exception:
         return "NEUTRAL", 0.5
+
 def get_sentiment_display(label, score):
     color = {
         "POSITIVE": "#d4edda",
@@ -83,7 +82,6 @@ def get_sentiment_display(label, score):
         </div>
     """
 
-# ---- Certainty classifier ----
 certainty_prompt = PromptTemplate.from_template("""
 You are an expert at classifying customer support bot answers.
 
@@ -104,13 +102,11 @@ def classify_certainty(reply_text):
     logging.info(f"Uncertainty LLM output: {certainty}")
     return certainty
 
-# ---- UI ----
 st.set_page_config(page_title="Little Sleepies Bot", layout="wide")
 st.title("Gemini Bot: Supervisor Guidance and Whisper")
 
 col1, col2 = st.columns(2)
 
-# --- Clear input fields BEFORE rendering widgets if flags are set ---
 if st.session_state.clear_user_input:
     st.session_state["user_input"] = ""
     st.session_state.clear_user_input = False
@@ -133,7 +129,6 @@ with col2:
     )
     supervisor_send = st.button("Send Supervisor Advice", key="supervisor_send")
 
-# ---- Main prompt ----
 main_prompt = PromptTemplate.from_template(f"""
 {kb_prompt}
 
@@ -152,14 +147,11 @@ User: {{user_input}}
 Assistant:
 """)
 
-
-# ---- User sends a message ----
 if send_button and user_input.strip():
     label, score = analyze_sentiment(user_input)
     st.session_state.sentiments.append(label)
     st.session_state.scores.append(score)
 
-    # Advisor whisper (applies only to this turn)
     whisper_to_pass = supervisor_input if supervisor_input else ""
     def get_whisper(_): return whisper_to_pass
     def get_user_input(_): return user_input
@@ -184,6 +176,8 @@ if send_button and user_input.strip():
 
     certainty = classify_certainty(response_text)
     st.session_state.history.append(f"user: {user_input}")
+    if whisper_to_pass:
+        st.session_state.history.append(f"advisor: {whisper_to_pass}")
 
     if certainty == "UNCERTAIN":
         st.session_state.history.append(
@@ -199,12 +193,10 @@ if send_button and user_input.strip():
         st.session_state.awaiting_supervisor = False
         st.session_state.pending_user_input = ""
 
-    # Clear both fields after one use
     st.session_state.clear_user_input = True
     st.session_state.clear_supervisor_input = True
     st.rerun()
 
-# ---- Supervisor sends advice in escalation mode ----
 if st.session_state.awaiting_supervisor and supervisor_send and supervisor_input.strip():
     pending_input = st.session_state.get("pending_user_input", "")
     if not pending_input:
@@ -231,13 +223,12 @@ if st.session_state.awaiting_supervisor and supervisor_send and supervisor_input
         response = pipeline_map.invoke({})
         response_text = response.content.strip()
         st.session_state.history.append(f"assistant: {response_text}")
+        st.session_state.history.append(f"advisor: {supervisor_input}")
         st.session_state.awaiting_supervisor = False
         st.session_state.pending_user_input = ""
-        # Clear supervisor input after one use
         st.session_state.clear_supervisor_input = True
         st.rerun()
 
-# ---- Display chat (newest at top!) ----
 user_count = len(st.session_state.sentiments) - 1
 for msg in reversed(st.session_state.history):
     if msg.startswith("supervisor_flag:"):
@@ -245,6 +236,12 @@ for msg in reversed(st.session_state.history):
             st.error("🔴 Supervisor attention required for this question.")
         continue
     role, content = msg.split(": ", 1)
+
+    if role == "advisor":
+        with st.chat_message("assistant", avatar="🧑‍🏫"):
+            st.markdown(f"**Advisor**: {content}")
+        continue
+
     with st.chat_message(role):
         st.markdown(content)
         if role == "user":
