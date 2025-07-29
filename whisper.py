@@ -47,7 +47,7 @@ Contact: Website: {kb["contact"]["website"]}, Email: {kb["contact"]["email"]}, S
     return kb_prompt
 kb_prompt = load_knowledge_base()
 
-llm = ChatGoogleGenerativeAI(model="gemini-2.0-flash", temperature=0)
+llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0)
 
 @st.cache_resource(show_spinner=False)
 def get_sentiment_pipeline():
@@ -83,17 +83,33 @@ def get_sentiment_display(label, score):
     """
 
 certainty_prompt = PromptTemplate.from_template("""
-You are an expert at classifying customer support bot answers.
+You are a quality control expert reviewing customer support bot responses.
 
-Instruction:
-Given the following answer from a bot, decide if it is confident and provides helpful information ("CONFIDENT"),
-or if it is uncertain, evasive, or cannot provide a real answer ("UNCERTAIN").
-Reply with only one word: CONFIDENT or UNCERTAIN.
+Decide if the following response is:
+- "CONFIDENT" — if it clearly answers the customer's question OR politely asks for more information to proceed, without violating company logic or policy.
+- "UNCERTAIN" — in any of the following cases:
+    - The response is evasive, vague, overly verbose, or makes unsupported assumptions.
+    - The user asks about returning an item that is **worn, washed, or past the return window**, and the bot replies without **checking with a supervisor**, **expressing empathy**, or **acknowledging that exceptions might exist**.
 
-Bot answer:
+Note: Even if the bot repeats the return policy, it must **show uncertainty or escalate** when handling cases that violate the policy.
+
+Do not flag polite clarification requests, greetings, or helpful next-step guidance as UNCERTAIN.
+
+Only respond with one word: CONFIDENT or UNCERTAIN.
+
+Bot response:
 "{bot_reply}"
 """)
+
 def classify_certainty(reply_text):
+    greeting_phrases = [
+        "hello", "hi there", "hey", "how can i help you", "welcome to little sleepies"
+    ]
+    normalized = reply_text.strip().lower()
+    if any(phrase in normalized for phrase in greeting_phrases) and len(reply_text.split()) <= 12:
+        logging.info("Greeting detected. Skipping certainty check.")
+        return "CONFIDENT"
+    
     cert_map = RunnableMap({"bot_reply": lambda _: reply_text})
     certainty_chain = cert_map | certainty_prompt | llm
     certainty_result = certainty_chain.invoke({})
@@ -104,6 +120,10 @@ def classify_certainty(reply_text):
 
 st.set_page_config(page_title="Little Sleepies Bot", layout="wide")
 st.title("Little Sleepies Bot")
+
+if not st.session_state.history:
+    initial_greeting = "Hello! How can I help you today?"
+    st.session_state.history.append(f"assistant: {initial_greeting}")
 
 col1, col2 = st.columns(2)
 
