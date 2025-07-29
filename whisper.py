@@ -103,7 +103,7 @@ def classify_certainty(reply_text):
     return certainty
 
 st.set_page_config(page_title="Little Sleepies Bot", layout="wide")
-st.title("Gemini Bot: Supervisor Guidance and Whisper")
+st.title("Little Sleepies Bot")
 
 col1, col2 = st.columns(2)
 
@@ -123,7 +123,7 @@ with col1:
 with col2:
     st.subheader("Advisor")
     supervisor_input = st.text_input(
-        "Whisper (normal) or Supervisor Advice (if needed):",
+        "Whisper or Advice:",
         key="supervisor_input",
         value=st.session_state.supervisor_input
     )
